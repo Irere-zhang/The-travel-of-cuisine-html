@@ -1,0 +1,435 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Precision Eurasian Food Map</title>
+    <style>
+        /* 原有地图样式保持不变 */
+        body, html {
+            margin: 0;
+            padding: 0;
+            width: 100%;
+            height: 100%;
+            overflow: hidden;
+        }
+        
+        #map-container {
+            position: relative;
+            width: 100%;
+            height: 100vh;
+            background-size: contain;
+            background-repeat: no-repeat;
+            background-position: center;
+            cursor: grab;
+            overflow: hidden;
+        }
+        
+        #map-container:active {
+            cursor: grabbing;
+        }
+        
+        #map-inner {
+            position: absolute;
+            top: 0;
+            left: 0;
+            width: 100%;
+            height: 100%;
+            transition: transform 0.1s ease-out;
+        }
+        
+        .city-marker {
+            position: absolute;
+            width: 12px;
+            height: 12px;
+            background-color: red;
+            border-radius: 50%;
+            cursor: pointer;
+            border: 2px solid white;
+            box-shadow: 0 0 5px rgba(0,0,0,0.5);
+            transform: translate(-50%, -50%);
+            z-index: 10;
+        }
+        
+        .city-marker.active {
+            background-color: rgb(255, 157, 0);
+        }
+        
+        @keyframes pulse {
+            0% { transform: translate(-50%, -50%) scale(1); opacity: 1; }
+            70% { transform: translate(-50%, -50%) scale(3); opacity: 0; }
+            100% { transform: translate(-50%, -50%) scale(1); opacity: 0; }
+        }
+        
+        .city-marker::after {
+            content: '';
+            position: absolute;
+            top: 50%;
+            left: 50%;
+            width: 100%;
+            height: 100%;
+            border-radius: 50%;
+            background-color: rgba(255, 0, 0, 0.5);
+            transform: translate(-50%, -50%);
+            animation: pulse 2s infinite;
+            z-index: -1;
+        }
+        
+        .city-marker.active::after {
+            background-color: rgba(255, 255, 0, 0.5);
+        }
+        
+        .city-label {
+            position: absolute;
+            background-color: rgba(255, 255, 255, 0.8);
+            padding: 3px 6px;
+            border-radius: 3px;
+            font-size: 12px;
+            white-space: nowrap;
+            transform: translate(-50%, 10px);
+            font-family: Arial, sans-serif;
+            pointer-events: none;
+        }
+        
+        .continent-title {
+            padding: 5px 10px;
+            background-color: rgba(255, 255, 255, 0.8);
+            border-radius: 5px;
+            position: absolute;
+            font-family: Arial, sans-serif;
+            font-weight: bold;
+            z-index: 20;
+        }
+
+        /* 修改后的弹窗样式 */
+        .modal {
+            display: none;
+            position: fixed;
+            top: 0;
+            left: 0;
+            width: 100%;
+            height: 100%;
+            background-color: rgba(0,0,0,0.7);
+            z-index: 100;
+            justify-content: center;
+            align-items: center;
+        }
+        
+        .modal-content {
+            background-color: white;
+            padding: 30px;
+            border-radius: 10px;
+            position: relative;
+            max-width: 90%;
+            max-height: 90vh;
+            width: 80%;
+            min-height: 70vh;
+            display: flex;
+            flex-direction: column;
+        }
+        
+        .modal-body {
+            display: flex;
+            gap: 20px;
+            width: 100%;
+            height: calc(100% - 50px);
+            margin-top: 20px;
+            overflow: hidden; /* 防止整体溢出 */
+        }
+        
+        .image-container {
+            flex: 1;
+            max-width: 45%;
+            border: 1px solid #ddd;
+            padding: 10px;
+            background: #f5f5f5;
+            display: flex;
+            flex-direction: column;
+            overflow: hidden; /* 防止容器本身溢出 */
+        }
+        
+        .image-scroll-wrapper {
+            flex: 1;
+            overflow-y: auto; /* 添加垂直滚动条 */
+            overflow-x: hidden; /* 防止水平滚动 */
+            max-height: 60vh; /* 限制高度确保滚动条出现 */
+        }
+        
+        .text-container {
+            flex: 1;
+            min-width: 45%;
+            display: flex;
+            flex-direction: column;
+        }
+        
+        .qr-image {
+            width: 100%;
+            height: auto;
+            max-width: 100%;
+            object-fit: contain;
+        }
+        
+        .edit-area {
+            width: 80%;
+            height: 100%;
+            min-height: 400px;
+            padding: 15px;
+            border: 2px solid #ccc;
+            border-radius: 5px;
+            resize: none;
+            font-family: Arial, sans-serif;
+            font-size: 14px;
+            line-height: 1.6;
+            background-color: #f8f8f8;
+        }
+        
+        .close-btn {
+            position: absolute;
+            top: 15px;
+            right: 15px;
+            font-size: 24px;
+            cursor: pointer;
+            background: rgba(255,255,255,0.8);
+            border: none;
+            border-radius: 50%;
+            padding: 5px;
+        }
+        
+        .city-title {
+            width: 100%;
+            margin-bottom: 20px;
+            font-family: Arial, sans-serif;
+            text-align: center;
+            font-size: 24px;
+            color: #333;
+        }
+    </style>
+</head>
+<body>
+    <div id="map-container">
+        <div id="map-inner">
+            <div class="continent-title" style="top: 30%; left: 65%;">ASIA</div>
+            <div class="continent-title" style="top: 35%; left: 30%;">EUROPE</div>
+        </div>
+    </div>
+    
+    <div id="qr-modal" class="modal">
+        <div class="modal-content">
+            <button class="close-btn">❌</button>
+            <h2 id="modal-city-title" class="city-title"></h2>
+            <div class="modal-body">
+                <div class="image-container">
+                    <div class="image-scroll-wrapper">
+                        <img id="qr-image" class="qr-image" src="" alt="City Image">
+                    </div>
+                </div>
+                <div class="text-container">
+                    <textarea id="city-description" class="edit-area" placeholder="美食介绍内容..." readonly></textarea>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <script>
+        document.addEventListener('DOMContentLoaded', function() {
+            // 初始化元素引用
+            const mapContainer = document.getElementById('map-container');
+            const mapInner = document.getElementById('map-inner');
+            const modal = document.getElementById('qr-modal');
+            const closeBtn = document.querySelector('.close-btn');
+            const modalTitle = document.getElementById('modal-city-title');
+            const qrImage = document.getElementById('qr-image');
+            const textEditor = document.getElementById('city-description');
+
+            // 直接在代码中存储城市内容
+            let cityContents = {
+            "Beijing": "In Beijing, cuisine is the fusion of living history and the vibrant street life (烟火气). The crisp skin of Peking Duck, roasted over fruitwood charcoal, conceals imperial culinary craftsmanship, while thin pancakes enfold the capital's millennia-old obsession with ritual. In hutong alleys, hand-pulled zhajiangmian noodles swim in coarse ceramic bowls with fermented soybean paste and pork—a rustic yet philosophically balanced definition of \"home.\" The city's gastronomic code flows between the Forbidden City's splendor and the smoke rising from courtyard homes (四合院).",
+            
+            "Tokyo": "Tokyo's dining tables stage an exquisite practice of mono no aware (the beauty of impermanence). At Tsukiji Market, sushi masters wield knives like brushes, sealing the ocean's fleeting sweetness within vinegared rice. Tempura artisans use 180°C oil to gild shrimp and vegetables in golden batter, capturing ephemeral beauty. Here, food follows the rhythm of \"shun\" (seasonality)—cherry blossoms give way to horse mackerel, autumn maples demand matsutake. Each dish mourns a passing season while celebrating rebirth.",
+            
+            "Seoul": "Seoul's culinary map etches collective national memory. Samgyeopsal (pork belly) sizzling on copper griddles evolved from postwar protein scarcity into a communal ritual; budae jjigae (army stew) transforms Spam and kimchi into a survivalist dark humor. In a city where \"sharing a meal\" literally means \"sharing a table,\" steam rising from bubbling pots mirrors the dualities of modern urban life—repression and catharsis.",
+            
+            "Istanbul": "Straddling continents, Istanbul's flavors blend like the Bosphorus' churning tides. Döner kebab rotates as a modern echo of Ottoman cavalry roasting meat on swords, while baklava's honeyed layers whisper of Silk Road caravans. A glass of ayran (salted yogurt drink) cools's fire, much as the Blue Mosque's domes embrace the Spice Bazaar's chaos. This is where history is served on skewers.",
+            
+            "Bangkok": "Bangkok's streets wage a sensory jungle warfare. Tom yum goong's lemongrass-chili clash mirrors the Mekong's humidity battling temple spires; mango sticky rice tames tropical fury with coconut cream. Woks hiss with fish sauce and palm sugar—here, appetite is a sweat-drenched celebration of contradictions.",
+            
+            "Delhi": "Delhi's cuisine performs a divine-and-earthly duet. Butter Chicken, born in a fugitive prince's kitchen, soothes colonial scars with cream. At street carts, pani puri's explosive burst of mint-lime water floods taste buds like the Ganges' flow. In spice markets, saffron and masala dance with silk saris, proving even gods kneel for crispy spheres.",
+            
+            "Dubai": "Dubai's table hosts a cyborg-bedouin hybrid. Shawarma towers mimic skyscrapers techno-replicating desert campfires; camel milk chocolate gilds caravan trails into luxury souvenirs. This is where petrodollar fantasies wear ancestral date-palm fingerprints.",
+            
+            "Hanoi": "Hanoi's soul simmers in its Old Quarter's creases. Pho broth melds French colonial beef bones with Lingnan cinnamon; lime and mint resurrect jungles in bowls. Rice paper rolls encapsulate the Red River Delta's obsession with \"tươi\" (freshness)—a culinary grammar balancing Gallic grace and Vietnamese wildness.",
+            
+            "Almaty": "Almaty tastes of wind-swept steppe epics. Beshbarmak's hand-torn horse meat over noodles continues Genghis Khan's battle feasts; baursak fried dough balls shaped like sheep droppings carry nomads' dark humor. Every bite crackles with grit and starlight.",
+            
+            "Jerusalem": "Jerusalem's cuisine mediates holy wars. Hummus' white mirrors rabbinical robes, falafel's green echoes minarets, while olive oil's gold belongs to all faiths. Where the Western Wall's shadow meets the muezzin's call, pita bread cradles humanity's simplest prayer for peace.",
+            
+            "Paris": "Parisian flavors play rational-romantic concertos. A croissant's 256 layers mirror the golden ratio; boeuf bourguignon simmers Cartesian logic into tender surrender. Even bakery butter whispers Rousseau's \"return to nature.\" Here, culinary perfectionism flows as stubbornly as the Seine.",
+            
+            "Rome": "Rome's cuisine blooms from imperial ruins. Wood-fired pizza's charred crusts mimic the Colosseum's cracks; tiramisu's coffee-soaked layers play Baroque light games. When tomatoes meet olive oil, when pecorino snows upon pasta, the Eternal City's glory becomes edible archaeology.",
+            
+            "Barcelona": "Barcelona cooks Gaudí's curves into meals. Paella's saffron-stained pan mirrors La Pedrera's waves; buñuelos' molten cores echo Sagrada Familia's stained glass. Here, food and architecture share Catalan DNA—dissolving borders between land and sea.",
+            
+            "Berlin": "Berlin flavors narrate division and healing. Currywurst—British curry powder meets German sausage—melts Cold War walls with ketchup; Black Forest Cake's kirsch-soaked cherries hide Prussian romanticism. Each bite chews on post-Wall reconciliation.",
+            
+            "Saint Petersburg": "Saint Petersburg's table debates ice and fire. Borscht's beetroot red bleeds through snow like the Church of Spilled Blood; pirogi pastries layer tsarist opulence over peasant sighs. Only vodka's burn ignites true Neva River feasts.",
+            
+            "Athens": "Athens serves Olympian modernity. Moussaka's béchamel whites out like Parthenon marble; yogurt-honey-nut bowls hold Athena's wisdom. Olive oil's glide across the tongue turns Acropolis moonlight into Aegean wind—food here demands godly fingers, not cutlery.",
+            
+            "Lisbon": "Lisbon tastes of maritime ghosts. Pastel de nata's caramelized crusts hide convent and spice ship secrets; cataplana copper pots compass-capsule codfish colonialism. Each salty-sweet bite whispers: \"Where land ends and sea begins.\"",
+            
+            "Warsaw": "Warsaw's kitchen resurrects phoenixes. Pierogi dumplings fold partitions-era nostalgia into crescent shapes; barszcz soup's crimson flows like Chopin's patriotic nocturnes. In this city rebuilt 800 times, traditional dishes summon vanished memories through taste.",
+            
+            "Stockholm": "Stockholm's table wrestles minimalism against primal force. Köttbullar meatballs curve like Viking longships; lingonberry jam sweetens dark forests. Meanwhile, surströmming's fermented stench dares challenge polar nights—a nasal alarm clock for the taste buds."
+        };
+
+            // 设置地图背景
+            mapInner.style.backgroundImage = 'url("map_background.jpg")';
+            mapInner.style.backgroundSize = 'contain';
+            mapInner.style.backgroundRepeat = 'no-repeat';
+            mapInner.style.backgroundPosition = 'center';
+            
+            // 城市数据
+            const cities = [
+                // Asia
+                { name: 'Beijing', country: 'China', lon: 116.4074, lat: 39.9042 },
+                { name: 'Tokyo', country: 'Japan', lon: 139.6917, lat: 35.6895 },
+                { name: 'Seoul', country: 'South Korea', lon: 126.9780, lat: 37.5665 },
+                { name: 'Istanbul', country: 'Turkey', lon: 28.9784, lat: 41.0082 },
+                { name: 'Bangkok', country: 'Thailand', lon: 100.5018, lat: 13.7563 },
+                { name: 'Delhi', country: 'India', lon: 77.1025, lat: 28.7041 },
+                { name: 'Dubai', country: 'UAE', lon: 55.2708, lat: 25.2048 },
+                { name: 'Hanoi', country: 'Vietnam', lon: 105.8342, lat: 21.0278 },
+                { name: 'Almaty', country: 'Kazakhstan', lon: 76.9286, lat: 43.2567 },
+                { name: 'Jerusalem', country: 'Israel', lon: 35.2137, lat: 31.7683 },
+                
+                // Europe
+                { name: 'Paris', country: 'France', lon: 2.3522, lat: 48.8566 },
+                { name: 'Rome', country: 'Italy', lon: 12.4964, lat: 41.9028 },
+                { name: 'Barcelona', country: 'Spain', lon: 2.1734, lat: 41.3851 },
+                { name: 'Berlin', country: 'Germany', lon: 13.4050, lat: 52.5200 },
+                { name: 'Saint Petersburg', country: 'Russia', lon: 30.3351, lat: 59.9343 },
+                { name: 'Athens', country: 'Greece', lon: 23.7275, lat: 37.9838 },
+                { name: 'Lisbon', country: 'Portugal', lon: -9.1393, lat: 38.7223 },
+                { name: 'Warsaw', country: 'Poland', lon: 21.0122, lat: 52.2297 },
+                { name: 'Stockholm', country: 'Sweden', lon: 18.0686, lat: 59.3293 }
+            ];
+
+            // 地图投影参数
+            const MAP_WIDTH = 2000;
+            const MAP_HEIGHT = 1200;
+            const MAP_LON_RANGE = { min: -20, max: 150 };
+            const MAP_LAT_RANGE = { min: 15, max: 65 };
+
+            // 墨卡托投影函数
+            function mercatorProjection(lon, lat) {
+                const x = (lon - MAP_LON_RANGE.min) / (MAP_LON_RANGE.max - MAP_LON_RANGE.min) * MAP_WIDTH;
+                const latRad = Math.min(Math.max(lat, MAP_LAT_RANGE.min), MAP_LAT_RANGE.max) * Math.PI / 180;
+                const mercN = Math.log(Math.tan(Math.PI/4 + latRad/2));
+                const yBase = Math.log(Math.tan(Math.PI/4 + MAP_LAT_RANGE.min * Math.PI / 360));
+                const yRange = Math.log(Math.tan(Math.PI/4 + MAP_LAT_RANGE.max * Math.PI / 360)) - yBase;
+                const y = (mercN - yBase) / yRange * MAP_HEIGHT;
+                return {
+                    x: (x / MAP_WIDTH) * 100,
+                    y: 100 - (y / MAP_HEIGHT) * 100
+                };
+            }
+
+            // 创建城市标记
+            cities.forEach(city => {
+                const coords = mercatorProjection(city.lon, city.lat);
+                
+                const marker = document.createElement('div');
+                marker.className = 'city-marker';
+                marker.style.left = `${coords.x}%`;
+                marker.style.top = `${coords.y}%`;
+                
+                const label = document.createElement('div');
+                label.className = 'city-label';
+                label.textContent = `${city.name} (${city.country})`;
+                label.style.left = `${coords.x}%`;
+                label.style.top = `${coords.y}%`;
+
+                marker.addEventListener('click', (e) => {
+                    e.stopPropagation();
+                    document.querySelectorAll('.city-marker').forEach(m => m.classList.remove('active'));
+                    marker.classList.add('active');
+                    
+                    // 更新弹窗内容
+                    modalTitle.textContent = `${city.name} (${city.country})`;
+                    qrImage.src = `qrcodes/${city.name.toLowerCase().replace(/ /g, '_')}.jpg`;
+                    textEditor.value = cityContents[city.name] || '';
+                    textEditor.readOnly = true; // 设置为只读
+                    modal.style.display = 'flex';
+                });
+
+                mapInner.appendChild(marker);
+                mapInner.appendChild(label);
+            });
+
+            // 文本编辑相关代码删除 - 不再需要
+            
+            // 关闭弹窗逻辑
+            closeBtn.addEventListener('click', () => {
+                modal.style.display = 'none';
+            });
+
+            // 地图交互逻辑（保持原有不变）
+            let isDragging = false;
+            let startX, startY;
+            let translateX = 0;
+            let translateY = 0;
+            let scale = 1;
+            let lastTranslate = { x: 0, y: 0 };
+
+            mapContainer.addEventListener('mousedown', startDrag);
+            mapContainer.addEventListener('wheel', handleZoom);
+            mapContainer.addEventListener('touchstart', (e) => startDrag(e.touches[0]));
+            mapContainer.addEventListener('touchmove', (e) => drag(e.touches[0]));
+
+            function startDrag(e) {
+                isDragging = true;
+                startX = e.clientX;
+                startY = e.clientY;
+                lastTranslate = { x: translateX, y: translateY };
+                document.addEventListener('mousemove', drag);
+                document.addEventListener('mouseup', endDrag);
+            }
+
+            function drag(e) {
+                if (!isDragging) return;
+                translateX = lastTranslate.x + (e.clientX - startX) / scale;
+                translateY = lastTranslate.y + (e.clientY - startY) / scale;
+                const maxTranslate = 200 * (1/scale);
+                translateX = Math.max(-maxTranslate, Math.min(translateX, maxTranslate));
+                translateY = Math.max(-maxTranslate, Math.min(translateY, maxTranslate));
+                updateTransform();
+            }
+
+            function endDrag() {
+                isDragging = false;
+                document.removeEventListener('mousemove', drag);
+                document.removeEventListener('mouseup', endDrag);
+            }
+
+            function handleZoom(e) {
+                e.preventDefault();
+                const delta = e.deltaY > 0 ? 0.9 : 1.1;
+                scale = Math.min(Math.max(1, scale * delta), 5);
+                const rect = mapContainer.getBoundingClientRect();
+                const mouseX = e.clientX - rect.left;
+                const mouseY = e.clientY - rect.top;
+                translateX -= (mouseX - translateX) * (scale - scale/delta);
+                translateY -= (mouseY - translateY) * (scale - scale/delta);
+                updateTransform();
+            }
+
+            function updateTransform() {
+                mapInner.style.transform = `
+                    translate(${translateX}px, ${translateY}px)
+                    scale(${scale})
+                `;
+            }
+        });
+    </script>
+</body>
+</html>
